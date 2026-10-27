@@ -1,0 +1,57 @@
+{
+  "name": "flust",
+  "displayName": "Flust",
+  "description": "Visual exploration and editing for Flutter widgets, powered by Dart AST.",
+  "version": "0.0.1",
+  "publisher": "flust-dev",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "activationEvents": [
+    "onCustomEditor:flust.visualEditor",
+    "onCommand:flust.openInFlust"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "flust.openInFlust",
+        "title": "Flust: Open in Flust"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "flust.visualEditor",
+        "displayName": "Flust Visual Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.w.dart"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "flust.openInFlust",
+          "when": "resourceLangId == dart",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p ."
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  }
+}
