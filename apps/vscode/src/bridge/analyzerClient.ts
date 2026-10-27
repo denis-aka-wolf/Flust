@@ -83,52 +83,82 @@ export class AnalyzerClient implements vscode.Disposable {
   }
 
   private ensureProcess(analyzerPath: string): void {
-    if (this.process && !this.process.killed) return;
+    if (this.process && this.process.exitCode === null && !this.process.killed) {
+      return;
+    }
 
     const packageRoot = path.dirname(path.dirname(analyzerPath));
-    // On Windows, `dart` is commonly exposed as dart.bat. Node cannot
-    // launch .bat files directly without a shell, so enable one on Windows.
-    this.process = cp.spawn('dart', ['run', 'bin/flust_analyzer.dart'], {
-      cwd: packageRoot,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      shell: process.platform === 'win32',
-      windowsHide: true
-    });
 
-    this.process.on('error', (error) => {
-      const message = `Could not start Dart analyzer: ${error.message}. ` +
-        `Command: dart run bin/flust_analyzer.dart; working directory: ${packageRoot}`;
-      console.error(`[Flust Analyzer] ${message}`);
-      for (const [id, resolve] of this.pending) {
-        resolve({ id, ok: false, error: message });
+    const child = cp.spawn(
+      'dart',
+      ['run', 'bin/flust_analyzer.dart'],
+      {
+        cwd: packageRoot,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        shell: process.platform === 'win32',
+        windowsHide: true
       }
-      this.pending.clear();
-      this.process = undefined;
-      this.lines?.close();
-      this.lines = undefined;
+    );
+
+    this.process = child;
+
+    this.lines?.close();
+    this.lines = readline.createInterface({
+      input: child.stdout
     });
 
-    this.lines = readline.createInterface({ input: this.process.stdout });
-    this.lines.on('line', (line) => {
+    this.lines.on('line', (line: string) => {
       try {
         const response = JSON.parse(line) as ParseResponse;
-        this.pending.get(response.id)?.(response);
-        this.pending.delete(response.id);
+        const resolve = this.pending.get(response.id);
+
+        if (resolve) {
+          this.pending.delete(response.id);
+          resolve(response);
+        }
       } catch {
-        // Ignore non-protocol stdout lines. Analyzer logs belong on stderr.
+        console.error(`[Flust Analyzer] Invalid JSON response: ${line}`);
       }
     });
-    this.process.stderr.on('data', (chunk: Buffer) => {
+
+    child.stderr.on('data', (chunk: Buffer) => {
       console.error(`[Flust Analyzer] ${chunk.toString().trimEnd()}`);
     });
-    this.process.on('exit', () => {
-      this.process = undefined;
+
+    child.on('error', (error: Error) => {
+      console.error(`[Flust Analyzer] Failed to start: ${error.message}`);
+
+      for (const [id, resolve] of this.pending) {
+        resolve({
+          id,
+          ok: false,
+          error: `Failed to start Dart analyzer: ${error.message}`
+        });
+      }
+
+      this.pending.clear();
       this.lines?.close();
       this.lines = undefined;
+      this.process = undefined;
+    });
+
+    child.on('exit', (code, signal) => {
+      console.error(
+        `[Flust Analyzer] Exited: code=${code}, signal=${signal}`
+      );
+
       for (const [id, resolve] of this.pending) {
-        resolve({ id, ok: false, error: 'Flust Analyzer process exited.' });
+        resolve({
+          id,
+          ok: false,
+          error: `Flust Analyzer exited (code=${code}, signal=${signal}).`
+        });
       }
+
       this.pending.clear();
+      this.lines?.close();
+      this.lines = undefined;
+      this.process = undefined;
     });
   }
 
