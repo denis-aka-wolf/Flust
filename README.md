@@ -41,10 +41,26 @@ Flust — это визуальный редактор Flutter-виджетов 
 ```sh
 cd tools/analyzer
 dart pub get
+dart analyze
+```
+
+Если ошибок нет, запустить анализатор:
+
+```sh
 dart run bin/flust_analyzer.dart
 ```
 
 Анализатор использует протокол JSON Lines: каждый запрос передаётся в виде отдельной строки JSON, и каждый ответ возвращается в виде отдельной строки JSON.
+
+Проверь его можно тестовым запросом:
+
+```sh
+@'
+{"id":"test-1","method":"parse","uri":"file:///test.dart","source":"Widget build(BuildContext context) => const Text('Hi');"}
+'@ | dart run bin/flust_analyzer.dart
+```
+
+Ожидаемый результат содержит "id":"test-1" и "ok":true.
 
 ## Текущий этап разработки
 
