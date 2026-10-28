@@ -257,18 +257,33 @@ class _BuildMethodVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitMethodDeclaration(MethodDeclaration node) {
     if (root == null && node.name.lexeme == 'build') {
-      final body = node.body;
-
-      if (body is ExpressionFunctionBody) {
-        root = body.expression;
-      } else if (body is BlockFunctionBody) {
-        final returnVisitor = _ReturnExpressionVisitor();
-        body.block.accept(returnVisitor);
-        root = returnVisitor.expression;
-      }
+      root = _readBuildBody(node.body);
     }
 
     super.visitMethodDeclaration(node);
+  }
+
+  @override
+  void visitFunctionDeclaration(FunctionDeclaration node) {
+    if (root == null && node.name.lexeme == 'build') {
+      root = _readBuildBody(node.functionExpression.body);
+    }
+
+    super.visitFunctionDeclaration(node);
+  }
+
+  Expression? _readBuildBody(FunctionBody body) {
+    if (body is ExpressionFunctionBody) {
+      return body.expression;
+    }
+
+    if (body is BlockFunctionBody) {
+      final returnVisitor = _ReturnExpressionVisitor();
+      body.block.accept(returnVisitor);
+      return returnVisitor.expression;
+    }
+
+    return null;
   }
 }
 
