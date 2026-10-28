@@ -39,6 +39,8 @@ export class AnalyzerClient implements vscode.Disposable {
   async parse(uri: vscode.Uri, source: string): Promise<FlustModel> {
     const analyzerPath = this.findAnalyzer();
     if (!analyzerPath) {
+      console.log('[Flust Analyzer] parse uri:', uri.toString());
+      console.log('[Flust Analyzer] parse source:', source);
       return this.fallbackModel(uri, source, 'Analyzer not found. Run `dart pub get` in tools/analyzer.');
     }
 
@@ -116,6 +118,7 @@ export class AnalyzerClient implements vscode.Disposable {
           this.pending.delete(response.id);
           resolve(response);
         }
+        console.log('[Flust Analyzer] Received stdout:', line);
       } catch {
         console.error(`[Flust Analyzer] Invalid JSON response: ${line}`);
       }
@@ -146,6 +149,7 @@ export class AnalyzerClient implements vscode.Disposable {
       console.error(
         `[Flust Analyzer] Exited: code=${code}, signal=${signal}`
       );
+      console.log('[Flust Analyzer] Pending requests:', this.pending.size);
 
       for (const [id, resolve] of this.pending) {
         resolve({
