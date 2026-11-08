@@ -51,6 +51,16 @@
           "group": "navigation"
         }
       ]
+    },
+    "configuration": {
+      "title": "Flust",
+      "properties": {
+        "flust.dartPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to dart.exe (or dart on macOS/Linux). Use this when VS Code cannot find the Dart SDK automatically."
+        }
+      }
     }
   },
   "scripts": {

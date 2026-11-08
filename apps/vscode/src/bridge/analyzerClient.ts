@@ -77,15 +77,72 @@ export class AnalyzerClient implements vscode.Disposable {
     return path.resolve(this.extensionUri.fsPath, '..', '..', 'tools', 'analyzer', 'bin', 'flust_analyzer.dart');
   }
 
+
+  /** Resolve Dart independently of the environment inherited by the VS Code process.
+   * The Flutter/Dart extension settings are authoritative when configured; PATH is
+   * retained as a fallback for standalone Dart installations.
+   */
+  private resolveDartExecutable(requestId: string): string {
+    const isWindows = process.platform === 'win32';
+    const executableName = isWindows ? 'dart.exe' : 'dart';
+    const config = vscode.workspace.getConfiguration('dart');
+    const flutterSdkPath = config.get<string>('flutterSdkPath');
+    const dartSdkPath = config.get<string>('sdkPath');
+    const configuredDartPath = vscode.workspace.getConfiguration('flust').get<string>('dartPath');
+    const candidates: string[] = [];
+
+    if (configuredDartPath) candidates.push(configuredDartPath);
+    if (dartSdkPath) candidates.push(path.join(dartSdkPath, 'bin', executableName));
+    if (flutterSdkPath) {
+      candidates.push(path.join(flutterSdkPath, 'bin', 'cache', 'dart-sdk', 'bin', executableName));
+      candidates.push(path.join(flutterSdkPath, 'bin', executableName));
+    }
+
+    const pathValue = process.env.PATH ?? process.env.Path ?? '';
+    for (const entry of pathValue.split(path.delimiter).filter(Boolean)) {
+      candidates.push(path.join(entry.replace(/^"|"$/g, ''), executableName));
+      if (!isWindows) candidates.push(path.join(entry, 'dart'));
+    }
+
+    const uniqueCandidates = [...new Set(candidates.map(candidate => path.normalize(candidate)))];
+    const resolved = uniqueCandidates.find(candidate => {
+      try { return fs.existsSync(candidate) && fs.statSync(candidate).isFile(); }
+      catch { return false; }
+    });
+
+    if (resolved) {
+      this.logger.info('AnalyzerClient', 'dart.resolve.success', 'Dart executable resolved', {
+        executable: resolved, source: configuredDartPath && path.normalize(resolved) === path.normalize(configuredDartPath)
+          ? 'flust.dartPath'
+          : dartSdkPath && resolved.startsWith(path.normalize(dartSdkPath))
+            ? 'dart.sdkPath'
+            : flutterSdkPath && resolved.startsWith(path.normalize(flutterSdkPath))
+              ? 'dart.flutterSdkPath' : 'PATH',
+        candidatesChecked: uniqueCandidates.length,
+      }, requestId);
+      return resolved;
+    }
+
+    this.logger.error('AnalyzerClient', 'dart.resolve.failed', 'Could not locate Dart SDK executable', {
+      platform: process.platform, candidatesChecked: uniqueCandidates,
+      configuredDartPath: configuredDartPath ?? null, dartSdkPath: dartSdkPath ?? null, flutterSdkPath: flutterSdkPath ?? null,
+      pathEntries: pathValue.split(path.delimiter).filter(Boolean),
+    }, requestId);
+    throw new Error(
+      'Dart SDK not found. Set "flust.dartPath" to the full path of dart.exe, or configure "dart.flutterSdkPath" / "dart.sdkPath" in VS Code settings, or add the Dart SDK bin directory to PATH. Restart the Extension Host after changing the setting.'
+    );
+  }
+
   private async ensureProcess(analyzerPath: string, requestId: string): Promise<void> {
     if (this.process && this.process.exitCode === null && !this.process.killed) return;
     const packageRoot = path.dirname(path.dirname(analyzerPath));
+    const dartExecutable = this.resolveDartExecutable(requestId);
     this.logger.info('AnalyzerClient', 'process.start', 'Starting Dart Analyzer', {
-      executable: 'dart', args: ['run', 'bin/flust_analyzer.dart'], cwd: packageRoot,
+      executable: dartExecutable, args: ['run', 'bin/flust_analyzer.dart'], cwd: packageRoot,
       platform: process.platform,
     }, requestId);
 
-    const child = cp.spawn('dart', ['run', 'bin/flust_analyzer.dart'], {
+    const child = cp.spawn(dartExecutable, ['run', 'bin/flust_analyzer.dart'], {
       cwd: packageRoot,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,

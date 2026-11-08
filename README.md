@@ -82,3 +82,38 @@ dart run bin/flust_analyzer.dart
 Откройте **View → Output** и выберите канал **Flust**. Также доступны команды **Flust: Show Logs** и **Flust: Clear Logs** из Command Palette. Кнопка **Show logs** находится в заголовке визуального редактора.
 
 Лог ведётся в структурированном JSON Lines формате. Каждая запись содержит `timestamp`, `level`, `component`, `stage`, `message` и, когда применимо, `requestId`, длительность и диагностические данные. Отдельно фиксируются запуск Dart-процесса, stdout/stderr, отправка и получение JSON-RPC-подобных сообщений JSON Lines, тайм-ауты и построение модели.
+
+## Поиска Dart SDK.
+
+Flust ищет dart.exe в следующем порядке:
+1. Собственная настройка flust.dartPath.
+2. dart.sdkPath из расширения Dart.
+3. dart.flutterSdkPath из Flutter.
+4. Системный PATH.
+
+Если SDK не найден, Flust покажет конкретную инструкцию по исправлению.
+
+### Как настроить
+В VS Code откройте settings.json и добавьте:
+```JSON
+{
+  "flust.dartPath": "F:\\flutter\\bin\\cache\\dart-sdk\\bin\\dart.exe"
+}
+```
+
+Путь выше примерный. Укажите реальное расположение своего dart.exe.
+
+Чтобы узнать его:
+```bash
+where.exe dart
+```
+
+Затем пересобрать расширение:
+
+```bash
+cd F:\Dart\Flust\apps\vscode
+npm install
+npm run compile
+```
+
+После этого уже можно перезапускать Extension Development Host.
