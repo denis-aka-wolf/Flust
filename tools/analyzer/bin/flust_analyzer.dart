@@ -256,8 +256,21 @@ class _BuildMethodVisitor extends RecursiveAstVisitor<void> {
 
   @override
   void visitMethodDeclaration(MethodDeclaration node) {
-    if (root == null && node.name.lexeme == 'build') {
-      root = _readBuildBody(node.body);
+    stderr.writeln('[DEBUG] Method found: ${node.name.lexeme}');
+
+    if (node.name.lexeme == 'build') {
+      stderr.writeln('[DEBUG] Build body type: ${node.body.runtimeType}');
+
+      final expression = _readBuildBody(node.body);
+
+      stderr.writeln(
+        '[DEBUG] Extracted expression: ${expression?.runtimeType}',
+      );
+      stderr.writeln(
+        '[DEBUG] Extracted source: ${expression?.toSource()}',
+      );
+
+      root ??= expression;
     }
 
     super.visitMethodDeclaration(node);
@@ -293,7 +306,10 @@ class _ReturnExpressionVisitor extends RecursiveAstVisitor<void> {
 
   @override
   void visitReturnStatement(ReturnStatement node) {
+    stderr.writeln('[DEBUG] Return found: ${node.expression?.toSource()}');
+
     expression ??= node.expression;
+
     super.visitReturnStatement(node);
   }
 }

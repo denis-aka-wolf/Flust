@@ -65,3 +65,7 @@ lerna-debug.log*
 
 # Local configuration
 local.properties
+
+# Analyzer logs
+tools/analyzer/debug-stderr.txt
+tools/analyzer/request.json

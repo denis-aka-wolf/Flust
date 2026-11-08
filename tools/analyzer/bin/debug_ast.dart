@@ -6,7 +6,7 @@ import 'package:analyzer/dart/ast/visitor.dart';
 
 void main() {
   final file = File(
-    r'F:\Dart\Flust\examples\flutter_app\lib\widgets\profile_card.w.dart',
+    r'..\..\examples\flutter_app\lib\widgets\profile_card.w.dart',
   );
 
   final source = file.readAsStringSync();
