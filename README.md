@@ -117,3 +117,52 @@ npm run compile
 ```
 
 После этого уже можно перезапускать Extension Development Host.
+
+## Скрипты установки Flust
+
+Файлы:
+  setup_flust.ps1  Реализация для PowerShell (основная логика установщика)
+  setup_flust.bat  Запускатель для Windows CMD
+  setup_flust.sh   Запускатель для Git Bash / MinGW
+
+Порядок обнаружения SDK:
+  1. Переменная окружения FLUTTER_ROOT
+  2. Параметр dart.flutterSdkPath в пользовательских настройках VS Code / VS Code Insiders
+  3. Команда where.exe flutter
+  4. Команда where.exe dart
+
+Установщик ищет непосредственно исполняемый файл dart.exe, отдавая
+предпочтение версии из комплекта Flutter:
+  bin\cache\dart-sdk\bin\dart.exe
+
+Файл dart.bat не используется в качестве исполняемого файла анализатора,
+поскольку его непосредственный запуск через Node.js может завершиться
+ошибкой в Windows.
+
+Установщик обновляет существующие файлы настроек VS Code и VS Code Insiders.
+Если ни один из них не найден, создаётся файл настроек обычного VS Code.
+
+Все существующие настройки сохраняются. При этом файл должен содержать
+корректный JSON. Комментарии формата JSONC, поддерживаемые VS Code,
+этой реализацией PowerShell не поддерживаются.
+
+Запуск из корневой папки проекта или из папки со скриптами:
+  PowerShell: .\setup_flust.ps1
+  CMD:        setup_flust.bat
+  Git Bash:   ./setup_flust.sh
+
+### Расположение файлов настроек
+
+VS Code:
+   %APPDATA%\Code\User\settings.json
+
+VS Code Insiders:
+   %APPDATA%\Code - Insiders\User\settings.json
+
+Например, для пользователя Windows с именем Mark:
+  C:\Users\Mark\AppData\Roaming\Code\User\settings.json
+  C:\Users\Mark\AppData\Roaming\Code - Insiders\User\settings.json
+
+Если ни один из файлов настроек не существует, установщик
+создаёт стандартный файл VS Code:
+  %APPDATA%\Code\User\settings.json
