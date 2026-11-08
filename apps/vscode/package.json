@@ -21,6 +21,14 @@
       {
         "command": "flust.openInFlust",
         "title": "Flust: Open in Flust"
+      },
+      {
+        "command": "flust.showLogs",
+        "title": "Flust: Show Logs"
+      },
+      {
+        "command": "flust.clearLogs",
+        "title": "Flust: Clear Logs"
       }
     ],
     "customEditors": [

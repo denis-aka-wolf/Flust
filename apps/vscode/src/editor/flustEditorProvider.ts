@@ -1,11 +1,13 @@
 import * as vscode from 'vscode';
 import { FlustDocument } from './documentManager';
 import { AnalyzerClient, FlustModel } from '../bridge/analyzerClient';
+import { FlustLogger } from '../logging';
 
 export class FlustEditorProvider implements vscode.CustomEditorProvider<FlustDocument> {
   static readonly viewType = 'flust.visualEditor';
 
   private readonly clients = new Map<string, AnalyzerClient>();
+  private readonly logger = FlustLogger.get();
 
   private readonly changeEmitter =
     new vscode.EventEmitter<vscode.CustomDocumentEditEvent<FlustDocument>>();
@@ -59,6 +61,7 @@ export class FlustEditorProvider implements vscode.CustomEditorProvider<FlustDoc
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   async openCustomDocument(uri: vscode.Uri): Promise<FlustDocument> {
+    this.logger.info('Document', 'open', 'Opening Flust document', { uri: uri.toString() });
     return FlustDocument.create(uri);
   }
 
@@ -66,6 +69,7 @@ export class FlustEditorProvider implements vscode.CustomEditorProvider<FlustDoc
     document: FlustDocument,
     webviewPanel: vscode.WebviewPanel
   ): Promise<void> {
+    this.logger.info('EditorProvider', 'resolve.start', 'Resolving Flust custom editor', { uri: document.uri.toString() });
     webviewPanel.webview.options = {
       enableScripts: true,
       localResourceRoots: [this.context.extensionUri]
@@ -76,12 +80,17 @@ export class FlustEditorProvider implements vscode.CustomEditorProvider<FlustDoc
     this.clients.set(document.uri.toString(), client);
 
     const update = async () => {
+      const updateStartedAt = Date.now();
+      this.logger.info('Document', 'read.start', 'Reading Dart source', { uri: document.uri.toString() });
       try {
         const sourceBytes = await vscode.workspace.fs.readFile(document.uri);
         const source = new TextDecoder().decode(sourceBytes);
+        this.logger.info('Document', 'read.complete', 'Dart source loaded', { bytes: sourceBytes.length, durationMs: Date.now() - updateStartedAt });
         const model: FlustModel = await client.parse(document.uri, source);
+        this.logger.info('Webview', 'model.post', 'Posting model to webview', { analyzerStatus: model.analyzer?.status, hasRoot: !!model.root, diagnosticsCount: model.diagnostics.length });
         webviewPanel.webview.postMessage({ type: 'model', model });
       } catch (error) {
+        this.logger.error('EditorProvider', 'update.failed', 'Failed to update editor', { error: String(error), durationMs: Date.now() - updateStartedAt });
         webviewPanel.webview.postMessage({
           type: 'error',
           message: `Could not read file: ${String(error)}`
@@ -90,7 +99,13 @@ export class FlustEditorProvider implements vscode.CustomEditorProvider<FlustDoc
     };
 
     webviewPanel.webview.onDidReceiveMessage(async (message) => {
-      if (message?.type === 'ready') await update();
+      if (message?.type === 'showLogs') {
+        void vscode.commands.executeCommand('flust.showLogs');
+      }
+      if (message?.type === 'ready') {
+        this.logger.debug('Webview', 'ready', 'Webview reported ready');
+        await update();
+      }
       if (message?.type === 'revealSource' && Number.isInteger(message.offset)) {
         const doc = await vscode.workspace.openTextDocument(document.uri);
         const editor = await vscode.window.showTextDocument(doc, { preview: true });
@@ -104,6 +119,7 @@ export class FlustEditorProvider implements vscode.CustomEditorProvider<FlustDoc
       if (event.document.uri.toString() === document.uri.toString()) void update();
     });
     webviewPanel.onDidDispose(() => {
+      this.logger.info('EditorProvider', 'dispose', 'Flust editor panel disposed', { uri: document.uri.toString() });
       watcher.dispose();
       client.dispose();
       this.clients.delete(document.uri.toString());
@@ -140,13 +156,14 @@ pre { white-space:pre-wrap; overflow-wrap:anywhere; font-family:var(--vscode-edi
 </style>
 </head>
 <body>
-<header><h1>Flust</h1><span class="badge">AST Explorer · MVP</span><span id="status" class="muted">Waiting for analyzer…</span></header>
+<header><h1>Flust</h1><span class="badge">AST Explorer · MVP</span><span id="status" class="muted">Waiting for analyzer…</span><button id="logs" style="margin-left:auto">Show logs</button></header>
 <main>
 <aside><h2>Widget Tree</h2><div id="tree" class="muted">Parsing source…</div></aside>
 <section><h2>Node details</h2><div id="details" class="card">Select a node in the tree.</div><h2>Diagnostics</h2><div id="diagnostics" class="card muted">No diagnostics yet.</div></section>
 </main>
 <script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
+document.getElementById('logs').addEventListener('click', () => vscode.postMessage({type:'showLogs'}));
 let currentModel = null;
 function esc(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function renderNode(node) {
@@ -166,8 +183,11 @@ window.addEventListener('message', event => {
   const message = event.data;
   if (message.type === 'model') {
     currentModel = message.model;
-    document.getElementById('status').textContent = 'Model v' + currentModel.schemaVersion;
-    document.getElementById('tree').innerHTML = currentModel.root ? '<ul>' + renderNode(currentModel.root) + '</ul>' : '<p>No widget calls found.</p>';
+    const failed = currentModel.analyzer?.status === 'error';
+    document.getElementById('status').textContent = failed ? 'Analyzer error' : 'Model v' + currentModel.schemaVersion;
+    document.getElementById('tree').innerHTML = failed
+      ? '<p class="error">Analyzer failed. Open Flust logs for the exact stage and error.</p>'
+      : currentModel.root ? '<ul>' + renderNode(currentModel.root) + '</ul>' : '<p>No widget calls found in supported build() expressions.</p>';
     document.getElementById('diagnostics').innerHTML = (currentModel.diagnostics || []).length
       ? currentModel.diagnostics.map(d => '<p class="error">' + esc(d.message) + '</p>').join('')
       : '<span class="muted">No diagnostics.</span>';

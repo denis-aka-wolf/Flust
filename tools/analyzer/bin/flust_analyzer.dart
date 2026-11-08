@@ -12,6 +12,11 @@ import 'package:analyzer/dart/ast/visitor.dart';
 /// - One input line represents one JSON request.
 /// - One output line represents one JSON response.
 Future<void> main() async {
+  _log('INFO', 'analyzer.start', 'Flust Analyzer started', {
+    'pid': pid,
+    'dartVersion': Platform.version,
+    'workingDirectory': Directory.current.path,
+  });
   await for (final line
       in stdin.transform(utf8.decoder).transform(const LineSplitter())) {
     if (line.trim().isEmpty) {
@@ -19,6 +24,7 @@ Future<void> main() async {
     }
 
     Object? requestId;
+    final stopwatch = Stopwatch()..start();
 
     try {
       final decoded = jsonDecode(line);
@@ -31,6 +37,10 @@ Future<void> main() async {
 
       final request = decoded;
       requestId = request['id'];
+      _log('INFO', 'request.received', 'Parse request received', {
+        'requestId': requestId,
+        'bytes': utf8.encode(line).length,
+      });
 
       final method = request['method'];
 
@@ -48,7 +58,17 @@ Future<void> main() async {
           ? request['source'] as String
           : '';
 
+      _log('DEBUG', 'parse.start', 'Parsing Dart source', {
+        'requestId': requestId, 'uri': uri, 'sourceLength': source.length,
+      });
       final model = _parseSource(uri, source);
+      stopwatch.stop();
+      _log('INFO', 'parse.complete', 'Dart source parsed', {
+        'requestId': requestId,
+        'durationMs': stopwatch.elapsedMilliseconds,
+        'hasRoot': model['root'] != null,
+        'diagnosticsCount': (model['diagnostics'] as List).length,
+      });
 
       stdout.writeln(
         jsonEncode({
@@ -57,7 +77,13 @@ Future<void> main() async {
           'model': model,
         }),
       );
-    } catch (error) {
+    } catch (error, stackTrace) {
+      stopwatch.stop();
+      _log('ERROR', 'request.failed', error.toString(), {
+        'requestId': requestId,
+        'durationMs': stopwatch.elapsedMilliseconds,
+        'stackTrace': stackTrace.toString(),
+      });
       stdout.writeln(
         jsonEncode({
           'id': requestId,
@@ -246,6 +272,7 @@ Map<String, Object?>? _buildRootNode(
 ///   return const Text('Hello');
 /// }
 Expression? _findBuildRoot(CompilationUnit unit) {
+  _log('DEBUG', 'ast.find_build', 'Searching compilation unit for build()', {});
   final visitor = _BuildMethodVisitor();
   unit.accept(visitor);
   return visitor.root;
@@ -256,19 +283,17 @@ class _BuildMethodVisitor extends RecursiveAstVisitor<void> {
 
   @override
   void visitMethodDeclaration(MethodDeclaration node) {
-    stderr.writeln('[DEBUG] Method found: ${node.name.lexeme}');
+    _log('DEBUG', 'ast.method', 'Method declaration found', {'name': node.name.lexeme});
 
     if (node.name.lexeme == 'build') {
-      stderr.writeln('[DEBUG] Build body type: ${node.body.runtimeType}');
+      _log('DEBUG', 'ast.build_body', 'Found build() method', {'bodyType': node.body.runtimeType.toString()});
 
       final expression = _readBuildBody(node.body);
 
-      stderr.writeln(
-        '[DEBUG] Extracted expression: ${expression?.runtimeType}',
-      );
-      stderr.writeln(
-        '[DEBUG] Extracted source: ${expression?.toSource()}',
-      );
+      _log('DEBUG', 'ast.build_expression', 'Extracted build() expression', {
+        'expressionType': expression?.runtimeType.toString(),
+        'source': expression?.toSource(),
+      });
 
       root ??= expression;
     }
@@ -306,7 +331,7 @@ class _ReturnExpressionVisitor extends RecursiveAstVisitor<void> {
 
   @override
   void visitReturnStatement(ReturnStatement node) {
-    stderr.writeln('[DEBUG] Return found: ${node.expression?.toSource()}');
+    _log('DEBUG', 'ast.return', 'Return statement found', {'source': node.expression?.toSource()});
 
     expression ??= node.expression;
 
@@ -388,4 +413,14 @@ bool _isLiteral(Expression expression) {
       value is DoubleLiteral ||
       value is BooleanLiteral ||
       value is NullLiteral;
+}
+void _log(String level, String stage, String message, Map<String, Object?> data) {
+  stderr.writeln(jsonEncode({
+    'timestamp': DateTime.now().toUtc().toIso8601String(),
+    'level': level,
+    'component': 'DartAnalyzer',
+    'stage': stage,
+    'message': message,
+    'data': data,
+  }));
 }
